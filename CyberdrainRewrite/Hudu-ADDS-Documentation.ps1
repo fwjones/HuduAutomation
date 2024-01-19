@@ -15,12 +15,11 @@ $hudups = @'
 # Active Directory Details to Hudu
 #
 # Get a Hudu API Key from https://yourhududomain.com/admin/api_keys
-$HuduAPIKey = "abcdefgh12345678"
+# $HuduAPIKey = "abcdefgh12345678"
 # Set the base domain of your Hudu instance without a trailing /
-$HuduBaseDomain = "https://your.hudu.com"
-#Company Name as it appears in Hudu
-$CompanyName = "Example Company"
-$HuduAssetLayoutName = "Active Directory - AutoDoc"
+# $HuduBaseDomain = "https://your.hudu.com"
+# Company Name as it appears in Hudu
+# $CompanyName = "Example Company"
 #####################################################################
 
 param (
@@ -36,8 +35,6 @@ param (
     [Parameter(Mandatory=$True)]
     [string]$CompanyName
 )
-# Set the Asset Layout Location in Hudu
-$HuduAssetLayoutName = "Active Directory"
 #####################################################################
 
 #Get the Hudu API Module if not installed
@@ -51,6 +48,7 @@ if (Get-Module -ListAvailable -Name HuduAPI) {
 #Set Hudu logon information
 New-HuduAPIKey $HuduAPIKey
 New-HuduBaseUrl $HuduBaseDomain
+$HuduAssetLayoutName = "Active Directory"
 
 Function Get-RegistryValue
 {
@@ -550,6 +548,7 @@ if ($company) {
 } else {
 	Write-Host "$CompanyName was not found in Hudu"
 }
+Write-Host "Ending the script"
 '@
 
 # Write PowerShell 7 script out to file in temp folder
@@ -558,11 +557,13 @@ $hudups | out-file "$env:temp\get-adds.ps1"
 }
 
 # Get Parameters for get-hudu.ps1
-$APIKey = Ninja-Property-Get huduapikey
-$Company = $env:NINJA_ORGANIZATION_NAME
-$BaseDomain = "https://docs.intellithought.com"
+$ScriptParams = @{
+	"HuduAPIKey" = Ninja-Property-Get huduapikey
+	"CompanyName" = $env:NINJA_ORGANIZATION_NAME
+	"HuduBaseDomain" = "https://docs.intellithought.com"
+}
 
 # Execute script in PowerShell 7 with parameters
-Start-Process -FilePath "pwsh.exe" -ArgumentList "-Command $env:Temp\get-adds.ps1 -HuduAPIKey $APIKey -HuduBaseDomain $BaseDomain -CompanyName $Company"
+Start-Process -FilePath "pwsh.exe" -ArgumentList "-File $env:Temp\get-adds.ps1 @ScriptParams"
 
 
