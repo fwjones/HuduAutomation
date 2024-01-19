@@ -1,3 +1,14 @@
+######################################################################
+#                                                                    #
+# Wrapper script to run Hudu-Get-ADDS-Documentation in PowerShell 7  #
+# Requires values for $HuduAPIKey, $HuduBaseDomain, and $CompanyName #
+#                                                                    #
+# e.g. Start-Process -FilePath "pwsh.exe" -ArgumentList "-HuduAPIKey #
+
+
+# Define variable containing PowerShell 7 script
+
+$hudups = @'
 # Based on the original script by Kelvin Tegelaar https://github.com/KelvinTegelaar/AutomaticDocumentation
 #####################################################################
 #
@@ -12,26 +23,43 @@ $CompanyName = "Example Company"
 $HuduAssetLayoutName = "Active Directory - AutoDoc"
 #####################################################################
 
+param (
+# Get a Hudu API Key from https://yourhududomain.com/admin/api_keys  
+    [Parameter(Mandatory=$True)] 
+    [string]$HuduAPIKey,
+
+# Set the base domain of your Hudu instance without a trailing /
+    [Parameter(Mandatory=$True)]
+    [string]$HuduBaseDomain,
+
+# Company Name as it appears in Hudu
+    [Parameter(Mandatory=$True)]
+    [string]$CompanyName
+)
+# Set the Asset Layout Location in Hudu
+$HuduAssetLayoutName = "Active Directory"
+#####################################################################
+
 #Get the Hudu API Module if not installed
 if (Get-Module -ListAvailable -Name HuduAPI) {
-		Import-Module HuduAPI 
+		Import-Module HuduAPI
 	} else {
 		Install-Module HuduAPI -Force
 		Import-Module HuduAPI
 	}
-  
+
 #Set Hudu logon information
 New-HuduAPIKey $HuduAPIKey
 New-HuduBaseUrl $HuduBaseDomain
-  
+
 Function Get-RegistryValue
 {
 	# Gets the specified registry value or $Null if it is missing
 	[CmdletBinding()]
 	Param
 	(
-		[String] $path, 
-		[String] $name, 
+		[String] $path,
+		[String] $name,
 		[String] $ComputerName
 	)
 
@@ -58,7 +86,7 @@ Function Get-RegistryValue
 		## use the Remote Registry service
 		$registry = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey(
 			[Microsoft.Win32.RegistryHive]::LocalMachine,
-			$ComputerName ) 
+			$ComputerName )
 	}
 	catch
 	{
@@ -117,7 +145,7 @@ Function GetBasicDCInfo {
         $IPv6Address  = $GC
 	}
 
-	$obj = [PSCustomObject] @{ 
+	$obj = [PSCustomObject] @{
 		DCName       = $DCName
 		GC           = $GC
 		ReadOnly     = $ReadOnly
@@ -126,7 +154,7 @@ Function GetBasicDCInfo {
         IPv4Address  = $IPv4Address
         IPv6Address  = $IPv6Address
 	}
-    
+
 	Return $obj
 }
 
@@ -172,7 +200,7 @@ Function GetTimeServerRegistryKeys {
 	{
 		$VMICEnabled = 'Enabled'
 	}
-	
+
 	$obj = [PSCustomObject] @{
 		DCName                = $DCName.Substring(0, $_.IndexOf( '.'))
 		TimeSource            = $NTPSource
@@ -204,71 +232,71 @@ function Get-WinADForestInformation {
         'Forest Domains'          = ($ForestInformation.Domains) -join ", "
         'Sites'                   = ($ForestInformation.Sites) -join ", "
     }
-      
+
     $Data.UPNSuffixes = Invoke-Command -ScriptBlock {
-        $UPNSuffixList  =  [PSCustomObject] @{ 
+        $UPNSuffixList  =  [PSCustomObject] @{
                 "Primary UPN" = $ForestInformation.RootDomain
                 "UPN Suffixes"   = $ForestInformation.UPNSuffixes -join ","
-            }  
+            }
         return $UPNSuffixList
     }
-      
+
     $Data.GlobalCatalogs = $ForestInformation.GlobalCatalogs
     $Data.SPNSuffixes = $ForestInformation.SPNSuffixes
-      
+
     $Data.Sites = Invoke-Command -ScriptBlock {
-      $Sites = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest().Sites | Sort-Object         
-        $SiteData = foreach ($Site in $Sites) {          
-          [PSCustomObject] @{ 
+      $Sites = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest().Sites | Sort-Object
+        $SiteData = foreach ($Site in $Sites) {
+          [PSCustomObject] @{
                 "Site Name" = $site.Name
                 "Subnets"   = ($site.Subnets | Sort-Object)  -join ", "
                 "Servers" = ($Site.Servers) -join ", "
-            }  
+            }
         }
         Return $SiteData
     }
-      
-        
+
+
     $Data.FSMO = Invoke-Command -ScriptBlock {
-        [PSCustomObject] @{ 
+        [PSCustomObject] @{
             "Domain" = $ForestInformation.RootDomain
             "Role"   = 'Domain Naming Master'
             "Holder" = $ForestInformation.DomainNamingMaster
         }
- 
-        [PSCustomObject] @{ 
+
+        [PSCustomObject] @{
             "Domain" = $ForestInformation.RootDomain
             "Role"   = 'Schema Master'
             "Holder" = $ForestInformation.SchemaMaster
         }
-          
+
         foreach ($Domain in $ForestInformation.Domains) {
             $DomainFSMO = Get-ADDomain $Domain | Select-Object PDCEmulator, RIDMaster, InfrastructureMaster
- 
-            [PSCustomObject] @{ 
+
+            [PSCustomObject] @{
                 "Domain" = $Domain
                 "Role"   = 'PDC Emulator'
                 "Holder" = $DomainFSMO.PDCEmulator
-            } 
- 
-             
-            [PSCustomObject] @{ 
+            }
+
+
+            [PSCustomObject] @{
                 "Domain" = $Domain
                 "Role"   = 'Infrastructure Master'
                 "Holder" = $DomainFSMO.InfrastructureMaster
-            } 
- 
-            [PSCustomObject] @{ 
+            }
+
+            [PSCustomObject] @{
                 "Domain" = $Domain
                 "Role"   = 'RID Master'
                 "Holder" = $DomainFSMO.RIDMaster
-            } 
- 
+            }
+
         }
-          
+
         Return $FSMO
     }
-      
+
     $Data.OptionalFeatures = Invoke-Command -ScriptBlock {
         $OptionalFeatures = $(Get-ADOptionalFeature -Filter * )
         $Optional = @{
@@ -299,17 +327,17 @@ function Get-WinADForestInformation {
     }
     return $Data
 }
-  
+
 $TableHeader = "<table style=`"width: 100%; border-collapse: collapse; border: 1px solid black;`">"
 $Whitespace = "<br/>"
 $TableStyling = "<th>", "<th align=`"left`" style=`"background-color:#00adef; border: 1px solid black;`">"
-  
+
 $RawAD = Get-WinADForestInformation
-  
+
 $ForestRawInfo = new-object PSCustomObject -property $RawAD.ForestInformation | convertto-html -Fragment | Select-Object -Skip 1
 $ForestToc = "<div id=`"forest_summary`"></div>"
 $ForestNice = $ForestToc + $TableHeader + ($ForestRawInfo -replace $TableStyling) + $Whitespace
-  
+
 $SiteRawInfo = $RawAD.Sites | Select-Object 'Site Name', Servers, Subnets | ConvertTo-Html -Fragment | Select-Object -Skip 1
 $SiteHeader = "<p id=`"site_summary`"><i>AD Forest Physical Structure.</i></p>"
 $SiteNice = $SiteHeader + $TableHeader + ($SiteRawInfo -replace $TableStyling) + $Whitespace
@@ -321,11 +349,11 @@ $DomainsNice = $DomainsHeader + $TableHeader + ($DomainsRawInfo -replace $TableS
 $OptionalRawFeatures = new-object PSCustomObject -property $RawAD.OptionalFeatures | convertto-html -Fragment | Select-Object -Skip 1
 $OptionalFeaturesToc = "<div id=`"optional_features`"></div>"
 $OptionalNice = $OptionalFeaturesToc + $TableHeader + ($OptionalRawFeatures -replace $TableStyling) + $Whitespace
-  
+
 $UPNRawFeatures = $RawAD.UPNSuffixes |  convertto-html -Fragment -as list| Select-Object -Skip 1
 $UPNToc = "<div id=`"upn_suffixes`"></div>"
 $UPNNice = $UPNToc + $TableHeader + ($UPNRawFeatures -replace $TableStyling) + $Whitespace
-  
+
 $DCRawFeatures = $RawAD.GlobalCatalogs| Sort-Object | ForEach-Object { GetBasicDCInfo $_ } | convertto-html -Fragment | Select-Object -Skip 1
 $DCToc = "<div id=`"domain_controllers`"></div>"
 $DCNice = $DCTocStart + $TableHeader + ($DCRawFeatures -replace $TableStyling) + $Whitespace
@@ -337,20 +365,20 @@ $DCNTPconfigNice = $NTPToc + $TableHeader + ($DCRawNTPconfig -replace $TableStyl
 $FSMORawFeatures = $RawAD.FSMO | convertto-html -Fragment | Select-Object -Skip 1
 $FSMOToc = "<div id=`"fsmo_roles`"></div>"
 $FSMONice = $FSMOToc + $TableHeader + ($FSMORawFeatures -replace $TableStyling) + $Whitespace
-  
+
 $ForestFunctionalLevel = $RawAD.RootDSE.forestFunctionality
 $DomainFunctionalLevel = $RawAD.RootDSE.domainFunctionality
 $domaincontrollerMaxLevel = $RawAD.RootDSE.domainControllerFunctionality
-  
+
 $passwordpolicyraw = Get-ADDefaultDomainPasswordPolicy | Select-Object ComplexityEnabled, PasswordHistoryCount, LockoutDuration, LockoutThreshold, MaxPasswordAge, MinPasswordAge | convertto-html -Fragment -As List | Select-Object -skip 1
 $passwordpolicyheader = "<tr><th>Policy</th><th><b>Setting</b></th></tr>"
 $passwordToc = "<div id=`"default_password_policies`"></div>"
 $passwordpolicyNice = $passwordToc + $TableHeader + ($passwordpolicyheader -replace $TableStyling) + ($passwordpolicyraw -replace $TableStyling) + $Whitespace
-  
+
 $adminsraw = Get-ADGroupMember "Domain Admins" | Select-Object SamAccountName, Name | convertto-html -Fragment | Select-Object -Skip 1
 $adminsToc = "<div id=`"domain_admins`"></div>"
 $adminsnice = $adminsToc + $TableHeader + ($adminsraw -replace $TableStyling) + $Whitespace
-  
+
 $TotalUsers = (Get-AdUser -filter *).count
 $EnabledUsers = (Get-AdUser -filter * | Where-Object { $_.enabled -eq $true }).count
 $DisabledUSers = (Get-AdUser -filter * | Where-Object { $_.enabled -eq $false }).count
@@ -358,7 +386,7 @@ $DomainAdminUsers = (Get-ADGroupMember -Identity "Domain Admins").count
 $EnterpriseAdminUsers = (Get-ADGroupMember -Identity "Enterprise Admins").count
 $SchemaAdminUsers = (Get-ADGroupMember -Identity "Schema Admins").count
 $AdminCountUsers = (Get-ADUser -LDAPFilter "(admincount=1)").count
-$UsersCountObj = [PSCustomObject] @{ 
+$UsersCountObj = [PSCustomObject] @{
     'Total'             = $TotalUsers
     'Enabled'           = $EnabledUsers
     'Disabled'          = $DisabledUSers
@@ -384,10 +412,10 @@ $toc = '<h2><center>
 			<a href="#upn_suffixes">UPN SUFFIXES</a>&nbsp;&nbsp;|&nbsp;&nbsp;
 			<a href="#default_password_policies">DEFAULT PASSWORD POLICIES</a>&nbsp;&nbsp;|&nbsp;&nbsp;
 			<a href="#user_count">USER COUNT</a>&nbsp;&nbsp;|&nbsp;&nbsp;
-			<a href="#domain_admins">DOMAIN ADMINS</a> 
+			<a href="#domain_admins">DOMAIN ADMINS</a>
 		</center></h2><br />'
 
-# Setup the fields for the Asset 
+# Setup the fields for the Asset
 $AssetFields = @{
 
             'last_updated'               = $currentDate
@@ -405,11 +433,11 @@ $AssetFields = @{
             'domain_admins'             = $adminsnice
             'user_count'                = $userTotalsNice
         }
- 
+
 # Checking if the FlexibleAsset exists. If not, create a new one.
 $Layout = Get-HuduAssetLayouts -name $HuduAssetLayoutName
 
-if (!$Layout) { 
+if (!$Layout) {
 
 $AssetLayoutFields = @(
 		@{
@@ -459,7 +487,7 @@ $AssetLayoutFields = @(
 			field_type = 'RichText'
 			show_in_list = 'false'
 			position = 8
-		},        
+		},
 		@{
 			label = 'FSMO Roles'
 			field_type = 'RichText'
@@ -497,7 +525,7 @@ $AssetLayoutFields = @(
 			position = 14
 		}
 	)
-	
+
 	Write-Host "Creating New Asset Layout"
 	$NewLayout = New-HuduAssetLayout -name $HuduAssetLayoutName -icon "fas fa-sitemap" -color "#00adef" -icon_color "#000000" -include_passwords $false -include_photos $false -include_comments $false -include_files $false -fields $AssetLayoutFields
 	$Layout = Get-HuduAssetLayouts -name $HuduAssetLayoutName
@@ -505,20 +533,36 @@ $AssetLayoutFields = @(
 
 
 $Company = Get-HuduCompanies -name $CompanyName
-if ($company) {	
+if ($company) {
 	#Upload data to Hudu
 	$Asset = Get-HuduAssets -name $RawAD.ForestName -companyid $company.id -assetlayoutid $layout.id
-	
+
 	#If the Asset does not exist, we edit the body to be in the form of a new asset, if not, we just upload.
 	if (!$Asset) {
 		Write-Host "Creating new Asset"
-		$Asset = New-HuduAsset -name $RawAD.ForestName -company_id $company.id -asset_layout_id $layout.id -fields $AssetFields	
+		$Asset = New-HuduAsset -name $RawAD.ForestName -company_id $company.id -asset_layout_id $layout.id -fields $AssetFields
 	}
 	else {
     Write-Host "Updating Asset"
-    $Asset = Set-HuduAsset -asset_id $Asset.id -name $RawAD.ForestName -company_id $company.id -asset_layout_id $layout.id -fields $AssetFields	
+    $Asset = Set-HuduAsset -asset_id $Asset.id -name $RawAD.ForestName -company_id $company.id -asset_layout_id $layout.id -fields $AssetFields
 	}
 
 } else {
 	Write-Host "$CompanyName was not found in Hudu"
 }
+'@
+
+# Write PowerShell 7 script out to file in temp folder
+if (-not(Test-Path "$env:temp\get-adds.ps1" -PathType leaf)) {
+$hudups | out-file "$env:temp\get-adds.ps1"
+}
+
+# Get Parameters for get-hudu.ps1
+$APIKey = Ninja-Property-Get huduapikey
+$Company = $env:NINJA_ORGANIZATION_NAME
+$BaseDomain = "https://docs.intellithought.com"
+
+# Execute script in PowerShell 7 with parameters
+Start-Process -FilePath "pwsh.exe" -ArgumentList "-Command $env:Temp\get-adds.ps1 -HuduAPIKey $APIKey -HuduBaseDomain $BaseDomain -CompanyName $Company"
+
+
